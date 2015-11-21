@@ -23,7 +23,9 @@ library(wordcloud)
 }
 
 /* ordered and unordered list styles */
-.reveal ul, 
+.reveal ul{
+    font-size: 27px;
+} 
 .reveal ol {
     font-size: 30px;
 }
@@ -33,9 +35,9 @@ library(wordcloud)
 Introduction
 ========================================================
 
-In this project we will try to answer the question, which would be of the most interest to travel agencies which include visiting the restaurants in their programmes. The question is as follows:
+In this project we will try to answer the question, which would be of the most interest to <span style="color:red">travel agencies</span> which include visiting the <span style="color:red">restaurants</span> in their programmes. The question is as follows:
 
-"Suppose that I'm a global traveler who loves visiting restaurants with national cuisines (ie American, Italian, Mexican, Chinese, etc.) in different cities. I'm interested in the rating of these cuisines based on user reviews for given ten cities; what are significant differences between the ratings and how they compare with the “fast food” restaurants. With which words the users most frequently express their satisfaction with excellent restaurants or disappointment with the bad ones?" 
+"Suppose that I'm a <span style="color:red">global traveler</span> who loves visiting restaurants with <span style="color:red">national cuisines</span> (ie American, Italian, Mexican, Chinese, etc.) in different cities. I'm interested in the <span style="color:red">rating</span> of these cuisines based on <span style="color:red">user reviews</span> for given ten cities; what are <span style="color:red">significant differences</span> between the ratings and how they compare with the “fast food” restaurants. With which <span style="color:red">words</span> the users most frequently express their <span style="color:red">satisfaction</span> with excellent restaurants or <span style="color:red">disappointment</span> with the bad ones?" 
 
 Methods
 ========================================================
@@ -48,14 +50,12 @@ Methods
 6. <span style="color:red">Inferential statistics</span> - pairwise comparison of the mean stars between categories within city clusters using _Welch Two Sample t-test_  
 7. <span style="color:red">Finding frequent words</span> and associations in the _review_ dataset texts (stars=5 and stars=1)  using the _term document matrix_. 
 
-Results (1)
+ 
 ========================================================
 
 ```{r loaddata}
 load(file="restaurants.Rdata")
 ```
-
-<br>
 
 ```{r boxplotstars, figs.only=TRUE, fig.width=15, fig.height=11, warning=FALSE, fig.cap='The box plot of the number of restaurant stars from user reviews, grouped by category and city cluster.\\label{fig:boxplot}'}
 # mean stars grouped by city and category
@@ -71,18 +71,18 @@ ggplot(restaurants, aes(x=category, y=stars, fill=category))+
         labs(x="Category", y="Stars from users") + theme(legend.position='bottom', text = element_text(size=14), legend.text=element_text(size=18), axis.text.x = element_text(angle=30, vjust=0.5), axis.title.y = element_text(vjust=2))
 ```
 <div style="font-size:50%;line-height:1.4;">
-<span class="emphasized">Top:</span> Boxplot of the number of restaurant stars from user reviews, grouped by category and city cluster.
+<span><b>Top</b>:</span> Boxplot of the number of restaurant stars from user reviews, grouped by category and city cluster.
 <br>
-Right: Table of ranking of restaurant categories grouped by city clusters. The categories that have no significant differences between the means of stars (pvalue > 0.05) are classified in the same rank. Conversely, there are significant differences in the average number of stars (_pvalue < 0.05_) between the categories in different ranks. The last column of the table shows the average number of stars within the corresponding rank.
+<span><b>Right</b>:</span> Table of ranking of restaurant categories grouped by city clusters. The categories that have no significant differences between the means of stars (pvalue > 0.05) are classified in the same rank. Conversely, there are significant differences in the average number of stars (_pvalue < 0.05_) between the categories in different ranks. The last column of the table shows the average number of stars within the corresponding rank.
 </div>
-
-Roses are <span style="color:red">red</span>, violets are <span style="color:blue">blue</span>.
 
 ***
 
-<img src="ranking.png" width=800 height=800>
+<span style="color:blue;font-size:27px">Results: ranking restaurants</span>
 
-Results (2)
+<img src="ranking.png" width=750 height=750>
+
+Results: user reviews text mining
 ========================================================
 
 ```{r loaddtm}
@@ -100,7 +100,7 @@ ord1 <- order(freq1, decreasing=TRUE)
 
 ```
 
-```{r showfigures, figs.only=TRUE, fig.height=3.5, fig.width=7, fig.cap='Wordcloud of the most frequent terms used in user review texts: reviews with five stars (left), review with one star (right)\\label{fig:wcloud}', fig.scap=NA}
+```{r showfigures, figs.only=TRUE, fig.height=4, fig.width=7, fig.cap='Wordcloud of the most frequent terms used in user review texts: reviews with five stars (left), review with one star (right)\\label{fig:wcloud}', fig.scap=NA}
 dark2 <- brewer.pal(6, "Dark2")   
 par(mfrow=c(1,2))
 wordcloud(names(freq5), freq5, max.words=100, rot.per=0.2, colors=dark2,
@@ -109,15 +109,23 @@ wordcloud(names(freq1), freq1, max.words=100, rot.per=0.2, colors=dark2,
           scale=c(3, 0.2))
 ```
 
+<div style="font-size:50%;line-height:1.4;">
+<span><b>Top</b>:</span> Wordclouds of the most frequent terms used in user review texts: reviews with five stars (left), review with one star (right).
+<br>
+<span><b>Bottom</b>:</span> Correlations between four most frequent words and other words for five stars  (left half of table) and one star reviews (right half of table).
+</div>
+
 <img src="frequent_words_associations.png" width=1100>
 
 Discussion
 ========================================================
 
-- different ranks in different city clusters  
-- common characteristic: *Fast Food* ranked *worst* everywhere, except in *Edinburgh, UK*  
-- restaurants in in *Edinburgh, UK* seems to be overrated
-- new American restaurants more appreciated than traditional ones in United States  
-- larger number of user reviews improves the differentiation between the categories  
-- text mining of the users reviews gives some satisfactory results but deserves a better and more comprehensive analysis
+- <span style="color:red">different</span> ranks in <span style="color:red">different</span> city clusters  
+- <span style="color:red">common</span> characteristic: <span style="color:red">fast food</span> ranked <span style="color:red">worst</span> everywhere, except in Edinburgh, UK  
+- restaurants in Edinburgh, UK seems to be <span style="color:red">overrated</span>
+- <span style="color:red">new American</span> restaurants more <span style="color:red">appreciated</span> than <span style="color:red">traditional</span> ones in United States
+- <span style="color:red">Chinese</span> restaurants are ranked <span style="color:red">low</span> in US and UK (exception of Urbana-Champaign, IL - 3.82 stars, which share the first place with mexican restaurants). Chinese  restaurants are also highly valued in Karlsruhe, Germany (3.84 stars).
+- <span style="color:red">larger</span> number of user reviews <span style="color:red">improves</span> the differentiation between the categories  
+- <span style="color:red">text mining</span> of the users reviews gives some <span style="color:red">satisfactory</span> results but deserves a better and more comprehensive analysis
+- described <span style="color:red">methodology</span> is useful for ranking <span style="color:red">arbitrary</span> business categories for a sufficiently <span style="color:red">large</span> number of user reviews
 

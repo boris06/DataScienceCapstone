@@ -319,7 +319,7 @@ freq1 <- rowSums(as.matrix(dtms1)) # Find word frequencies
 ord1 <- order(freq1, decreasing=TRUE)
 ```
 
-```{r showfigures, figs.only=TRUE, fig.height=3.5, fig.width=7, fig.cap='Wordcloud of the most frequent terms used in user review texts: reviews with five stars (left), review with one star (right)\\label{fig:wcloud}', fig.scap=NA}
+```{r showfigures, figs.only=TRUE, fig.height=3.5, fig.width=7, fig.cap='Wordclouds of the most frequent terms used in user review texts: reviews with five stars (left), review with one star (right).\\label{fig:wcloud}', fig.scap=NA}
 dark2 <- brewer.pal(6, "Dark2")   
 par(mfrow=c(1,2))
 wordcloud(names(freq5), freq5, max.words=100, rot.per=0.2, colors=dark2,

@@ -1,0 +1,365 @@
+---
+title: "Data Science Capstone Final Project: Ranking National Cuisines and Fast Food Restaurants in Ten Cities"
+author: "Boris Petelin"
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+documentclass: article
+classoption: a4paper
+---
+
+Introduction
+===
+
+In this project we will try to answer the question, which would be of the most interest to travel agencies which include visiting the restaurants in their programmes. The question is as follows:
+
+"Suppose that I'm a global traveler who loves visiting restaurants with national cuisines (ie American, Italian, Mexican, Chinese, etc.) in different cities. I'm interested in the rating of these cuisines based on user reviews for given ten cities; what are significant differences between the ratings and how they compare with the “fast food” restaurants. With which words the users most frequently express their satisfaction with excellent restaurants or disappointment with the bad ones?" 
+
+Methods
+===
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(cache=TRUE,echo=FALSE)
+setwd('C:/Users/petelin/Documents/Coursera/Data Science Specialization/Data Science Capstone')
+library(dplyr)
+library(ggplot2)
+library(xtable)
+options(xtable.comment = FALSE)
+library(tm)
+library(wordcloud)
+library(jsonlite)
+```
+
+```{r loadRdata}
+# loads flat data (see task_0_get_the_data.R)
+load(file="business_flat.RData")
+load(file="review_flat.RData")
+nbus <- length(business_flat[,1])
+nrew <- length(review_flat[,1])
+# Make syntactically valid names out of character vectors. A syntactically valid 
+# name consists of letters, numbers and the dot or underline characters and 
+# starts with a letter or the dot not followed by a number.
+names(business_flat) <- make.names(names(business_flat))
+names(review_flat) <- make.names(names(review_flat))
+```
+
+In order to find the answers to above questions, we use the data obtained from [Yelp](http://www.yelp.com/) or more precisely the academic datasets "business" and "review"" that are part of the [Yelp Dataset Challenge](http://www.yelp.com/dataset_challenge). After downloading the data we have available `r format(nbus, big.mark=",")` businesses and associated `r format(nrew, big.mark=",")` reviews.
+
+In this section we describe all the steps of the methodology which we apply, whereas the associated program code can be found on GitHub (). 
+
+First we divide the businesses in the business dataset into ten groups (see http://www.yelp.com/dataset_challenge) that belong to the cities _Edinburgh, Karlsruhe, Montreal, Waterloo, Pittsburgh, Charlotte, Urbana, Champaign, Phoenix, Las Vegas_ and _Madison_ and their surroundings. We call these groups _city clusters_. We combine the cities _Urbana_ and _Champaign_ and their surroundings into a single city cluster _Urbana-Champaign_. For this purpose, we use _kmeans_ clustering of the geographical coordinates (longitude, latitude) of all cities in the business dataset. We set the cluster centers **fixed** in the metropolitan areas of the mentioned ten cities. We add the resulting _city cluster_ as a new column in the business dataset.
+
+
+```{r clusterCities}
+# Clustering cities in 10 clusters
+cities.business <- c("Edinburgh", "Karlsruhe", "Montreal", "Waterloo",
+                     "Pittsburgh", "Charlotte", "Urbana", "Champaign",
+                     "Phoenix", "Las Vegas", "Madison")
+cities.states <-c('Edinburgh, UK', 'Karlsruhe, Germany', 'Montreal, Canada',
+                  'Waterloo, Canada', 'Pittsburgh, PA', 'Charlotte, NC',
+                  'Urbana-Champaign, IL', 'Phoenix, AZ', 'Las Vegas, NV',
+                  'Madison, WI')
+cities.states <- sort(cities.states)
+cc <- strsplit(cities.states, ", ")
+cc <- do.call(rbind.data.frame, cc)
+cities <- as.character(cc[,1])
+countries <- as.character(cc[,2])
+countries[countries != "Canada" & countries != "UK" & countries != "Germany"] <- "US"
+
+city.centres <- select(business_flat, business_id, city, longitude, latitude) %>%
+        filter(city %in% cities.business)
+city.centres$city[city.centres$city=="Urbana"] <- 'Urbana-Champaign'
+city.centres$city[city.centres$city=="Champaign"] <- 'Urbana-Champaign'
+city.centres <- group_by(city.centres, city) %>% 
+        summarize(lon=mean(longitude),lat=mean(latitude))
+set.seed(43046721)
+geo.cluster<-kmeans(business_flat[,c('longitude','latitude')],city.centres[,2:3])
+# clusters of business cities
+city_clusters <- data.frame(business_id=business_flat$business_id,
+                            city=business_flat$city,
+                            state=business_flat$state,
+                            city_cluster=cities.states[geo.cluster$cluster],
+                            country=countries[geo.cluster$cluster])
+```
+
+```{r prepareRestaurants}
+# selecting only restaurants with selected categories
+selected_categ <- c("American (New)","American (Traditional)", "Burgers",
+                    "Chinese", "Fast Food", "Italian", "Japanese", "Mexican",
+                    "Pizza", "Seafood")
+restaurants <- select(business_flat, business_id, categories) %>%
+        filter(grepl ( "^(.*[Rr]estaurant.*)", business_flat$categories))
+f2 <- function(x) length(intersect(unlist(x),selected_categ)) > 0
+sel <- sapply(restaurants$categories, f2)
+restaurants <- restaurants[sel,]
+# adding city clusters
+restaurants <- inner_join(restaurants, city_clusters[,c("business_id", 
+                                                        "city_cluster", 
+                                                        "country")],
+                          by="business_id")
+nrest <- length(restaurants[,1])
+```
+
+```{r preparetm}
+five.stars <- left_join(restaurants, review_flat[,c("business_id", "stars",
+                                                    "text")], 
+                        by="business_id") %>%
+        filter(stars==5) %>% select(text)
+one.star <- left_join(restaurants, review_flat[,c("business_id", "stars",
+                                                  "text")],
+                      by="business_id") %>%
+        filter(stars==1) %>% select(text)
+```
+
+In the next step we extract from business dataset only those businesses which have the category _Restaurant_ included in their categories. Among the restaurants we choose subcategories representing national cuisines and fast food restaurants. The subcategories we choose for this study are _American (New), American (Traditional), Burgers, Chinese, Fast Food, Italian, Japanese, Mexican, Pizza_ and _Seafood_. In the following we will call this subcategories as categories. These categories are sufficiently general and we expect that they have sufficient number of reviews. In the following we will call the subset of business dataset that represents selected categories of restaurants, a _restaurants table_. To facilitate the later analysis, we add to the restaurants table a column which contains one of the chosen categories. A certain restaurant may have multiple categories, for example _Pizza_ and _Fast Food_. As a consequence, the mentioned restaurant would have two rows in the restaurants table, the first for _Pizza_ and the second for _Fast Food_.
+
+```{r assigncategories}
+arl <- length(unlist(restaurants$categories))
+business_id <- array(dim=arl)
+category <- array(dim=arl)
+cnt <- 0
+for (i in 1:length(restaurants[,1])) {
+        for (j in 1:length(restaurants$categories[[i]])) {
+                cnt <- cnt + 1
+                business_id[cnt] <- restaurants$business_id[i]
+                category[cnt] <- restaurants$categories[[i]][j]
+                }   
+        }
+df <- data.frame(business_id, category=as.character(category),
+                 stringsAsFactors=FALSE)
+restaurants <- select(restaurants, -categories) %>%
+        left_join(df, by="business_id") %>%
+        filter(category %in% selected_categ)
+```
+
+
+```{r reviewstars}
+restaurants <- inner_join(restaurants,review_flat[,c("business_id", "stars")], 
+                          by="business_id")
+```
+
+```{r saverestaurants}
+save(restaurants, file="restaurants.Rdata")
+```
+
+
+The next step comprises the addition of the number of stars that users have added to their restaurant reviews. We use the column _stars_ from _reviews dataset_ and by using the R _dplyr_ command _left_join_ we add that column to restaurants table.
+
+With the such prepared restaurants table we first perform some _exploratory analysis_. For this purpose we use the _box plot_ from the R library _ggplot_. From this plot we can see the span of the values of the stars given from users and their mean values, grouped by the city clusters and selected categories.
+
+We are not interested only in the exploratory analysis but we also want to know if there are significant differences between the categories within city clusters. Therefore we carry out the statistical inference. For this purpose we use unpaired _Welch Two Sample t-test_ (R command _t.test_) with the confidence level equal to 0.95. We perform the mentioned test on all combinations of categories within a city cluster, which can be written as $(stars(category_i),\ stars(category_j))$ , where $i,j = 1\ ..\ number\ of\ categories,\ i \ne j,\ number\ of\ categories = 10$. We classify the combinations that have the _p-value_ of _t-test_ greater than 0.05 into the same rank and arrange the resulting ranks in the order of decreasing mean number of stars in a table. For such ranking we developed a brief recursive algorithm (see the R code on GitHub).
+
+Finally, we conduct the _text mining_ (R package _tm_) of the texts in the _reviews dataset_ to identify the frequent words with which the users most frequently express their satisfaction with the excellent restaurants and the disappointment with bad ones. For this purpose we use two subsets of the review texts. The first is associated with five stars reviews and the second with the reviews that gave only one star. The text mining consists of removing numbers, transforming to lower case, removing punctuation and stopwords, word stemming and finally producing the _term document matrix_. From the latter we identify the frequent words that occur in a multitude of texts. In this way, we obtain two matrices, first for the five star and the second for the one star texts. For the presentation of the most frequent words we use the R library _wordcloud_. Finally, we look for some of the largest correlations between the most frequent words and other words with the command _findAssoc_. 
+
+Results
+===
+
+Applying the methodology, described in the Methods section, we obtained `r format(nrest, big.mark=",")` restaurants of ten choosen categories in ten city clusters. The number of available user reviews grouped by selected categories and city clusters is shown in Table \ref{tab:reviews}. We can see that the majority of reviews comes from the US and a smaller part from Canada and EU.
+
+```{r tablerescity, results='asis'}
+rc.table <- table(restaurants[, c("city_cluster","category")])
+print(xtable(rc.table, caption="Number of user reviews for restaurants with choosen categories.", label = "tab:reviews"), comment=FALSE, scalebox='0.66', caption.placement='top')
+```
+ 
+The boxplot on Figure \ref{fig:boxplot} shows the number of stars from user reviews and their mean value for each city cluster and each category. We can see that the median and the first and third quartile often do not distinguish between categories, while one can clearly see the difference between the mean values. The reason for this is the data on the number of stars that consist only of whole numbers (1, 2, ... 5). The outliers are labeled with red dots and we can easily figure out that they represent poorly rated restaurants. The resulting boxplot gives us at first sight a good comparison between the categories of restaurants, but for detection of significant differences between them we used _Welch Two Sample t-test_ for all pairs of restaurant categories within the city cluster. Table \ref{tab:ranking} shows the ranking of restaurant categories grouped by city clusters. The categories that have no significant differences between the means of stars (_pvalue > 0.05_) are classified in the same rank. Conversely, there are significant differences in the average number of stars (_pvalue < 0.05_) between the categories in different ranks. The last column of the table shows the average number of stars within the corresponding rank.
+
+
+```{r boxplotstars, figs.only=TRUE, fig.width=15, fig.height=20, warning=FALSE, fig.cap='The box plot of the number of restaurant stars from user reviews, grouped by category and city cluster.\\label{fig:boxplot}'}
+# mean stars grouped by city and category
+means <- aggregate(stars ~  city_cluster + category, restaurants, mean)
+means$stars <- round(means$stars,2)
+ggplot(restaurants, aes(x=category, y=stars, fill=category))+
+        geom_boxplot(outlier.colour="red") +
+        stat_summary(fun.y=mean, colour="darkred", geom="point", 
+                     shape=18, size=3,show_guide = FALSE) + 
+        geom_text(data = means, aes(label = stars, y = stars - 0.08))+
+        facet_wrap(~city_cluster, ncol=2)+
+        guides(fill=guide_legend(title=NULL)) +
+        labs(x="Category", y="Stars from users") + theme(legend.position='bottom', text = element_text(size=28), legend.text=element_text(size=18), axis.text.x = element_text(angle=30, vjust=0.5), axis.title.y = element_text(vjust=2))
+```
+
+```{r recursiveRank}
+recursive.rank <- function(dftt,ranking,ranked,rank) {
+        if (length(dftt[,1]) == 0) return (ranking)
+        else {
+                pmax = 0.05
+                categ1 <- dftt$category1[1]
+                dftt1 <- filter(dftt, (category1 == categ1) & 
+                                        (p.value >= pmax) )
+                ranking <- rbind(ranking, 
+                                 data.frame(rank=rank, 
+                                            categories=paste(dftt1$category2,
+                                                             collapse = ', ')))
+                ranked <- c(ranked, as.array(dftt1$category2))
+                rank <- rank + 1
+                dftt <- filter(dftt, !(category1 %in% ranked) &
+                                       !(category2 %in% ranked))
+                return (recursive.rank(dftt,ranking,ranked,rank))
+                }        
+        }
+```
+
+```{r ranking}
+first <- TRUE
+for (city in cities.states) {
+        dftt <- data.frame(category1=character(0),
+                           category2=character(0),
+                           p.value=numeric(0),
+                           mean1=numeric(0),
+                           mean2=numeric(0),
+                           stringsAsFactors=FALSE)
+        for (categ1 in selected_categ) {
+                for (categ2 in selected_categ) {
+                        x <- filter(restaurants,category==categ1 &
+                                            city_cluster==city) %>%
+                                select(stars)
+                        y <- filter(restaurants,category==categ2 &
+                                            city_cluster==city) %>%
+                                select(stars)
+                        if (length(x$stars)>1 & length(y$stars)>1) {
+                                tt <- t.test(x$stars,y$stars)
+                                df <- data.frame(
+                                        category1=as.character(categ1),
+                                        category2=as.character(categ2),
+                                        p.value=tt$p.value,
+                                        mean1=as.numeric(tt$estimate["mean of x"]),
+                                        mean2=as.numeric(tt$estimate["mean of y"]),
+                                        stringsAsFactors=FALSE)
+                                dftt <- rbind(dftt, df)
+                                }
+                        }
+                }
+        dftt <- filter(dftt, mean1>=mean2) %>% arrange(desc(mean1),desc(mean2))
+        ranking <- data.frame(rank=integer(),categories=character())
+        rank = 1
+        ranked = array(dim=0)
+        rr <- recursive.rank(dftt, ranking, ranked, rank)
+        rr <- mutate(rr, city=city)
+        stars <- array()
+        for (ir in 1:length(rr[,1])) {
+                stars[ir] <- filter(restaurants, 
+                                    category %in% unlist(strsplit(as.character(rr$categories[ir]),', ')) &
+                                            city_cluster==city) %>%
+                        summarize(mean.stars=round(mean(stars, na.rm=TRUE),2))
+                }
+        rr <- mutate(rr, stars=stars)
+        if (first) {
+                rrtot <- rr
+                first <- FALSE
+                }
+        else {
+                rrtot <- rbind(rrtot,rr)
+                }       
+        }
+```
+
+```{r showranking, results='asis'}
+rr.table <- xtable(rrtot[c("city", "rank", "categories", "stars")], 
+                   caption="Ranking of the categories of restaurants  within city clusters.",
+                   label = "tab:ranking")
+digits(rr.table) <- c(0,0,0,0,2)
+hlines <- group_by(rr.table, city) %>% summarize(ncity=n())
+hlines1 <- rep(0, times = 10)
+hlines1[1] <- 0
+for (i in 2:length(hlines$city)) {
+        hlines1[i] <- hlines1[i-1] + hlines$ncity[i-1]
+}
+print(rr.table, include.rownames=FALSE, comment=FALSE, scalebox='0.75',
+      hline.after = c(-1,hlines1,nrow(rr.table)), caption.placement='top')
+```
+
+```{r saveranking}
+save(rrtot, file="ranking.Rdata")
+```
+
+
+```{r getcorpus}
+getCorpus <- function(x) {
+        corpus = Corpus(VectorSource(x))
+        corpus = tm_map(corpus, removeNumbers)
+        corpus = tm_map(corpus, tolower) 
+        corpus = tm_map(corpus, PlainTextDocument)
+        corpus = tm_map(corpus, removePunctuation)
+        corpus = tm_map(corpus, removeWords, stopwords("english"))
+        corpus = tm_map(corpus, stemDocument)
+        dtm = TermDocumentMatrix(corpus)
+        return(dtm)
+}
+```
+
+```{r fivestars}
+dtm5 <- getCorpus(five.stars$text)
+```
+
+```{r onestar}
+dtm1 <- getCorpus(one.star$text)
+```
+
+```{r savedtm}
+save(dtm5,dtm1,file="dtm.Rdata")
+```
+
+
+Figure \ref{fig:wcloud} on the left presents the wordcloud of 50 most frequent terms found in `r format(length(five.stars$text), big.mark=",")` review texts associated with five stars, while on the right shows the wordcloud of 100 most frequent terms found in `r format(length(one.star$text), big.mark=",")` texts associated with one star. Observing the left cloud (5 stars) we can see the most frequent words _place_, _food_, _great_ and _good_, followed by further positive words _love_, _like_, _best_, _delici(ous)_, _perfect_, _awesom(e)_ and so on. In the case of reviews with only one star (right cloud) the words through which users express dissatisfaction are less frequent. For this reason, we increased the value of the parameter _max.words_ of _R wordcloud_ to 100. Then in the resulting right cloud we can recognize the negative words _bad_, _worst_, _horribl(e)_ and _disappoint(ed)_.
+
+Table \ref{tab:assoc} on the left shows the top ten correlations between four the most frequent words in five stars reviews i.e. _food_, _place_, _great_ and _good_. The table gives some meaningful pairs of words such as _(like, food)_, _(great, servic(e))_, _(good, sauc(e))_ and so on. In a similar way, we also found the word pairs with higher correlation in one star reviews, for example _(didnt, like)_. 
+
+```{r preparefigures}
+dtms5 <- removeSparseTerms(dtm5, 0.9) # Prepare the data (max 15% empty space)   
+freq5 <- rowSums(as.matrix(dtms5)) # Find word frequencies   
+ord5 <- order(freq5, decreasing=TRUE)
+
+dtms1 <- removeSparseTerms(dtm1, 0.9) # Prepare the data (max 15% empty space)   
+freq1 <- rowSums(as.matrix(dtms1)) # Find word frequencies
+ord1 <- order(freq1, decreasing=TRUE)
+```
+
+```{r showfigures, figs.only=TRUE, fig.height=3.5, fig.width=7, fig.cap='Wordcloud of the most frequent terms used in user review texts: reviews with five stars (left), review with one star (right)\\label{fig:wcloud}', fig.scap=NA}
+dark2 <- brewer.pal(6, "Dark2")   
+par(mfrow=c(1,2))
+wordcloud(names(freq5), freq5, max.words=100, rot.per=0.2, colors=dark2,
+          scale=c(3, 0.2))
+wordcloud(names(freq1), freq1, max.words=100, rot.per=0.2, colors=dark2, 
+          scale=c(3, 0.2))
+```
+
+```{r assoctable}
+fasst <- function(fA) {
+        df <- matrix(nrow=10, ncol=8)
+        coln <- vector(mode = "character",length = 8)
+        for (i in seq(10)) {
+                for (j in seq(4)){
+                        df[i,2*j-1] <- names(fA[[j]][i])
+                        df[i,2*j] <- as.numeric(fA[[j]][i])
+                        coln[2*j-1] <- names(fA)[j]
+                        coln[2*j] <- "cor"
+                        }
+                }
+        df <- as.data.frame(df, row.names=NULL, stringsAsFactors=FALSE)
+        colnames(df) <- coln
+        df       
+}
+```
+
+```{r printassoc, results='asis'}
+fA5 <- findAssocs(dtms5, names(freq5[ord5][1:4]), corlimit=0.0)
+df5 <- fasst(fA5)
+fA1 <- findAssocs(dtms1, names(freq1[ord1][1:4]), corlimit=0.0)
+df1 <- fasst(fA1)
+print(xtable(cbind(df5,df1), align = c(rep("|l",9),"||l|",rep("l|",7)), 
+                   caption="Correlations between four most frequent words and other words for five stars  (left) and one star reviews (right).",
+                   label = "tab:assoc"), include.rownames=FALSE, 
+      comment=FALSE, scalebox='0.80', caption.placement='top')
+```
+
+Discussion
+===
+
+From the Table \ref{tab:ranking} we can figure out that different categories are best ranked in different city clusters and also the order of categories is different. For example, the people in Edinburgh almost equally prefer the restaurants with seafod and the ones which serve burgers. The guests in Las Vegas adore japanese restaurants, in Phoenix the italian ones, and so on. The common characteristic is that _Fast Food_ restaurants are ranked _worst_ everywhere, except in _Edinburgh, UK_, where such restaurants achieve a high mean number of stars (close to four). Examining the average stars in _Edinburgh, UK_ gives us the impression that the restaurants in that city cluster are overrated. We also notice that Americans more appreciate the new American restaurants than traditional ones. The former achieve very high ranks in Madison, WI, Phoenix, AZ and Pittsburgh, PA. They are on the top also in other American cities.
+
+We can admit that the ranking greatly depends upon the number of data, that is, the number guest reviews in a particular city cluster. A larger number of user reviews enables us to improve the differentiation between the categories. In the case of _Las Vegas, NV_ and _Phoenix, AZ_ we have a bunch of data, resulting in seven and nine ranks, respectivelly, whereas for _Karlsruhe, Germany_ and _Waterloo, Canada_ the number of available user reviews is limited and we have only two ranks. 
+
+The text mining of the users reviews deserves a better and more comprehensive analysis, which is beyond the space in this study. It would be necessary to analyze even larger number of frequent words and their correlations with the other words. Other methods that are widely used in this field and should be examined are _clustering by term similarity_, _hierarchical clustering_, _k-means clustering_ etc.
+

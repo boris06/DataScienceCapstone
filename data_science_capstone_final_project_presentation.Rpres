@@ -1,0 +1,123 @@
+Data Science Capstone Final Project: Ranking National Cuisines and Fast Food Restaurants in Ten Cities
+========================================================
+author: Boris Petelin
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(cache=TRUE,echo=FALSE)
+setwd('C:/Users/petelin/Documents/Coursera/Data Science Specialization/Data Science Capstone')
+library(dplyr)
+library(ggplot2)
+library(xtable)
+options(xtable.comment = FALSE)
+library(tm)
+library(wordcloud)
+```
+
+<style>
+
+/* slide titles */
+.reveal h3 { 
+  font-size: 50px;
+  color: blue;
+}
+
+/* ordered and unordered list styles */
+.reveal ul, 
+.reveal ol {
+    font-size: 30px;
+}
+
+</style>
+
+Introduction
+========================================================
+
+In this project we will try to answer the question, which would be of the most interest to travel agencies which include visiting the restaurants in their programmes. The question is as follows:
+
+"Suppose that I'm a global traveler who loves visiting restaurants with national cuisines (ie American, Italian, Mexican, Chinese, etc.) in different cities. I'm interested in the rating of these cuisines based on user reviews for given ten cities; what are significant differences between the ratings and how they compare with the “fast food” restaurants. With which words the users most frequently express their satisfaction with excellent restaurants or disappointment with the bad ones?" 
+
+Methods
+========================================================
+
+1. Using the <span style="color:red">data</span> from the academic datasets _business_ and _review_ from [Yelp Dataset Challenge](http://www.yelp.com/dataset_challenge)  
+2. <span style="color:red">Clustering cities</span> from business dataset into 10 city clusters using the <span style="color:red">k-means</span> clustering of geographical coordinates  
+3. <span style="color:red">Selecting restaurants</span> with categories _American (New), American (Traditional), Burgers, Chinese, Fast Food, Italian, Japanese, Mexican, Pizza_ and _Seafood_ from _business_ dataset  
+4. <span style="color:red">Adding _stars_</span> from _review_ dataset using _left join_  
+5. <span style="color:red">Exploratory analysis</span> using the _boxplot_ from _ggplot2_  
+6. <span style="color:red">Inferential statistics</span> - pairwise comparison of the mean stars between categories within city clusters using _Welch Two Sample t-test_  
+7. <span style="color:red">Finding frequent words</span> and associations in the _review_ dataset texts (stars=5 and stars=1)  using the _term document matrix_. 
+
+Results (1)
+========================================================
+
+```{r loaddata}
+load(file="restaurants.Rdata")
+```
+
+<br>
+
+```{r boxplotstars, figs.only=TRUE, fig.width=15, fig.height=11, warning=FALSE, fig.cap='The box plot of the number of restaurant stars from user reviews, grouped by category and city cluster.\\label{fig:boxplot}'}
+# mean stars grouped by city and category
+means <- aggregate(stars ~  city_cluster + category, restaurants, mean)
+means$stars <- round(means$stars,2)
+ggplot(restaurants, aes(x=category, y=stars, fill=category))+
+        geom_boxplot(outlier.colour="red") +
+        stat_summary(fun.y=mean, colour="darkred", geom="point", 
+                     shape=18, size=3,show_guide = FALSE) + 
+        geom_text(data = means, aes(label = stars, y = stars - 0.08))+
+        facet_wrap(~city_cluster, ncol=2)+
+        guides(fill=guide_legend(title=NULL)) +
+        labs(x="Category", y="Stars from users") + theme(legend.position='bottom', text = element_text(size=14), legend.text=element_text(size=18), axis.text.x = element_text(angle=30, vjust=0.5), axis.title.y = element_text(vjust=2))
+```
+<div style="font-size:50%;line-height:1.4;">
+<span class="emphasized">Top:</span> Boxplot of the number of restaurant stars from user reviews, grouped by category and city cluster.
+<br>
+Right: Table of ranking of restaurant categories grouped by city clusters. The categories that have no significant differences between the means of stars (pvalue > 0.05) are classified in the same rank. Conversely, there are significant differences in the average number of stars (_pvalue < 0.05_) between the categories in different ranks. The last column of the table shows the average number of stars within the corresponding rank.
+</div>
+
+Roses are <span style="color:red">red</span>, violets are <span style="color:blue">blue</span>.
+
+***
+
+<img src="ranking.png" width=800 height=800>
+
+Results (2)
+========================================================
+
+```{r loaddtm}
+load(file="dtm.Rdata")
+```
+
+```{r preparefigures}
+dtms5 <- removeSparseTerms(dtm5, 0.9) # Prepare the data (max 15% empty space)   
+freq5 <- rowSums(as.matrix(dtms5)) # Find word frequencies   
+ord5 <- order(freq5, decreasing=TRUE)
+
+dtms1 <- removeSparseTerms(dtm1, 0.9) # Prepare the data (max 15% empty space)   
+freq1 <- rowSums(as.matrix(dtms1)) # Find word frequencies
+ord1 <- order(freq1, decreasing=TRUE)
+
+```
+
+```{r showfigures, figs.only=TRUE, fig.height=3.5, fig.width=7, fig.cap='Wordcloud of the most frequent terms used in user review texts: reviews with five stars (left), review with one star (right)\\label{fig:wcloud}', fig.scap=NA}
+dark2 <- brewer.pal(6, "Dark2")   
+par(mfrow=c(1,2))
+wordcloud(names(freq5), freq5, max.words=100, rot.per=0.2, colors=dark2,
+          scale=c(3, 0.2))
+wordcloud(names(freq1), freq1, max.words=100, rot.per=0.2, colors=dark2, 
+          scale=c(3, 0.2))
+```
+
+<img src="frequent_words_associations.png" width=1100>
+
+Discussion
+========================================================
+
+- different ranks in different city clusters  
+- common characteristic: *Fast Food* ranked *worst* everywhere, except in *Edinburgh, UK*  
+- restaurants in in *Edinburgh, UK* seems to be overrated
+- new American restaurants more appreciated than traditional ones in United States  
+- larger number of user reviews improves the differentiation between the categories  
+- text mining of the users reviews gives some satisfactory results but deserves a better and more comprehensive analysis
+

@@ -16,7 +16,7 @@ In this project we will try to answer the question, which would be of the most i
 
 "Suppose that I'm a global traveler who loves visiting restaurants with national cuisines (ie American, Italian, Mexican, Chinese, etc.) in different cities. I'm interested in the rating of these cuisines based on user reviews for given ten cities; what are significant differences between the ratings and how they compare with the “fast food” restaurants. With which words the users most frequently express their satisfaction with excellent restaurants or disappointment with the bad ones?" 
 
-Methods
+Methods and Data
 ===
 
 ```{r setup, include=FALSE}
